@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Escape Game LRSY</title>
+    <style>
+        /* Fond noir pour masquer les bandes perdues sur les écrans hors-ratio */
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: sans-serif; background-color: #000;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+
+        /* LE CADRE DE RÉFÉRENCE ABSOLU (9:16) */
+        #game-container {
+            position: relative;
+            aspect-ratio: 9 / 16;
+            height: 100vh;
+            max-width: 100vw;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        .page { 
+            display: none; 
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+        }
+        .page.active { display: block; }
+
+        .bg-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+        }
+
+        /* ÉLÉMENTS INTERACTIFS */
+        .btn-indice, .btn-carte, .btn-accueil-action {
+            position: absolute;
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0); 
+            border: none;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .btn-carte, .btn-indice { width: 15%; height: 9%; bottom: 2.5%; }
+        .btn-carte { left: 6%; }
+        .btn-indice { right: 6%; }
+
+        input[type="text"] {
+            position: absolute; pointer-events: auto; border: none;
+            background: transparent; color: #000; font-weight: bold;
+            text-align: center; outline: none; z-index: 1001;
+        }
+        
+        /* Polices adaptatives basées sur la hauteur du conteneur (vh) */
+        .input-rect { left: 50%; transform: translateX(-50%); width: 60%; height: 5%; font-size: 2.5vh; }
+        .input-square { left: 50%; transform: translateX(-50%); width: 14%; height: 8%; font-size: 3.5vh; }
+        .input-malle { width: 8.5%; height: 4.8%; font-size: 2.2vh; }
+
+        .correct { color: #27ae60 !important; }
+        .wrong { color: #cc0000 !important; }
+
+        /* SYSTÈME DE MODALE (Bridé à l'intérieur du container) */
+        #modal-wrapper {
+            display: none; 
+            position: absolute; /* Fixé au container et non à l'écran */
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 2000;
+            pointer-events: none; 
+        }
+
+        .backdrop-active {
+            background: rgba(0, 0, 0, 0.7);
+            pointer-events: auto !important;
+        }
+
+        .modal-img {
+            position: absolute;
+            transform: translate(-50%, -50%); 
+            border: 2px solid #4a3318; 
+            background: white;
+            pointer-events: auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        /* SCORE FINAL */
+        #score-display {
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            font-size: 2.5vh; color: #cc0000; font-weight: bold;
+            text-align: center; width: 80%;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 3vh; border-radius: 15px;
+            display: none;
+            opacity: 0;
+            transition: opacity 1s ease;
+            z-index: 3000;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Le contenu dynamique sera injecté ici -->
+    
+    <!-- Modale placée à l'intérieur pour un calibrage parfait -->
+    <div id="modal-wrapper" onclick="handleWrapperClick()">
+        <img id="overlay-asset" class="modal-img" src="" onclick="event.stopPropagation()">
+    </div>
+</div>
+
+<script>
+    let currentScore = 0;
+    let hintUsedOnCurrentPage = false;
+    let startTime = null;
+    let endTime = null;
+    let timerStarted = false;
+
+    const gameData = [
+        { id: 1, bg: "00_01_accueil_appli.jpg", type: "nav", next: 2, btn: {t:81, l:27, w:46, h:7} },
+        { id: 2, bg: "00_02_accueil_chasse.jpg", type: "nav", next: 3, btn: {t:71, l:24, w:52, h:10} },
+        { id: 3, bg: "01_énigme.jpg", type: "puzzle", style: "input-rect", pos: "82%", answers: ["kiosque", "au kiosque", "au kiosque à musique", "kiosque a musique"], hint: "01_indice.jpg", hasMap: false, hintStyle: {t: "47%", l: "50%", w: "90%"} },
+        { id: 4, bg: "02_énigme.jpg", type: "puzzle", style: "input-rect", pos: "52%", answers: ["mort au tyran"], hint: "02_indice.jpg", hasMap: false, hintStyle: {t: "72.5%", l: "50%", w: "90%"} },
+        { id: 5, bg: "03_énigme.jpg", type: "puzzle", style: "input-rect", pos: "91%", answers: ["place de la vieille horloge", "de la vieille horloge"], hint: "03_indice.jpg", hasMap: false, hintStyle: {t: "50%", l: "50%", w: "41%"} },
+        { id: 6, bg: "04_énigme.jpg", type: "puzzle", style: "input-rect", pos: "42.5%", answers: ["1566"], hint: "04_indice.jpg", hasMap: true, hintStyle: {t: "68%", l: "50%", w: "61.2%"} },
+        { id: 7, bg: "05_énigme.jpg", type: "puzzle", style: "input-rect", pos: "44.5%", answers: ["bleue", "bleu"], hint: "05_indice.jpg", hasMap: true, hintStyle: {t: "69%", l: "50%", w: "61.2%"} },
+        { id: 8, bg: "06_énigme.jpg", type: "puzzle", style: "input-rect", pos: "86.5%", answers: ["presbytere"], hint: "06_indice.jpg", hasMap: true, hintStyle: {t: "58%", l: "50%", w: "90%"} },
+        { id: 9, bg: "07_énigme.jpg", type: "multi", style: "input-square", inputs: [{t:"39.75%", l:"50%"}, {t:"68.5%", l:"50%"}], answers: ["5", "6"], hint: "07_indice.jpg", hasMap: true, hintStyle: {t: "58%", l: "50%", w: "90%"} },
+        { id: 10, bg: "08_énigme.jpg", type: "puzzle", style: "input-square", pos: "43%", answers: ["9", "louis 9", "ix"], hint: "08_indice.jpg", hasMap: true, hintStyle: {t: "69%", l: "50%", w: "61.2%"} },
+        { id: 11, bg: "09_énigme.jpg", type: "puzzle", style: "input-rect", pos: "45.25%", answers: ["sacristie", "à la sacristie", "dans la sacristie", "la sacristie"], hint: "09_indice.jpg", hasMap: true, hintStyle: {t: "69%", l: "50%", w: "61.2%"} },
+        { id: 12, bg: "10_énigme.jpg", type: "puzzle", style: "input-square", pos: "48%", answers: ["14"], hint: "10_indice.jpg", hasMap: true, hintStyle: {t: "71%", l: "50%", w: "61.2%"} },
+        { id: 13, bg: "11_énigme.jpg", type: "puzzle", style: "input-rect", pos: "38.75%", answers: ["statue", "au pied de la statue", "aux pieds de la statue", "au pied de la statue de napoléon", "aux pieds de la statue de napoléon", "sous la statue de napoléon", "statue équestre", "sous la statue", "statue de Napoléon", "place napoleon"], hint: "11_indice.jpg", hasMap: true, hintStyle: {t: "67%", l: "50%", w: "61.2%"} },
+        { id: 14, bg: "12_énigme.jpg", type: "multi", style: "input-malle", inputs: [{t:"41%", l:"15.5%"}, {t:"41%", l:"27.5%"}, {t:"41%", l:"39.5%"}, {t:"41%", l:"51.5%"}, {t:"41%", l:"63.5%"}, {t:"41%", l:"75.5%"}], answers: ["1", "5", "3", "6", "1", "4"], hint: "12_indice.jpg", hasMap: true, hintStyle: {t: "67%", l: "50%", w: "61.2%"} },
+        { id: 15, bg: "13_victoire.jpg", type: "final" }
+    ];
+
+    function normalize(str) { 
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim(); 
+    }
+
+    function initGame() {
+        const container = document.getElementById('game-container');
+        gameData.forEach((data, index) => {
+            const div = document.createElement('div');
+            div.className = `page ${index === 0 ? 'active' : ''}`;
+            div.id = `page-${data.id}`;
+            let html = `<img src="${data.bg}" class="bg-img"><div class="overlay">`;
+            
+            if (data.type === "nav") {
+                html += `<button class="btn-accueil-action" style="top:${data.btn.t}%; left:${data.btn.l}%; width:${data.btn.w}%; height:${data.btn.h}%" onclick="handleNavigation(${data.id}, ${data.next})"></button>`;
+            } 
+            else if (data.type === "puzzle" || data.type === "multi") {
+                if (data.type === "multi") {
+                    data.inputs.forEach((p, i) => {
+                        html += `<input type="text" class="${data.style}" style="top:${p.t}; left:${p.l}" onkeypress="handleEnter(event, ${data.id})">`;
+                    });
+                } else {
+                    html += `<input type="text" class="${data.style}" style="top:${data.pos}" onkeypress="handleEnter(event, ${data.id})">`;
+                }
+                html += `<button class="btn-indice" onclick="toggleAsset('${data.hint}', true, ${data.id})"></button>`;
+                if (data.hasMap) {
+                    html += `<button class="btn-carte" onclick="toggleAsset('Plan_LRSY.jpg', false, ${data.id})"></button>`;
+                }
+            } 
+            else if (data.type === "final") {
+                html += `<div id="score-display"></div>`;
+            }
+            html += `</div>`;
+            div.innerHTML = html;
+            container.prepend(div); // Ajout avant la modale
+        });
+    }
+
+    function handleNavigation(currentId, nextId) {
+        if (currentId === 2 && !timerStarted) {
+            startTime = new Date();
+            timerStarted = true;
+        }
+        nextPage(nextId);
+    }
+
+    function handleEnter(e, pageId) { if (e.key === 'Enter') validateAnswers(pageId); }
+
+    function validateAnswers(pageId) {
+        const data = gameData.find(d => d.id === pageId);
+        const inputs = document.querySelectorAll(`#page-${pageId} input`);
+        let allCorrect = true;
+        
+        inputs.forEach((input, idx) => {
+            const val = normalize(input.value);
+            let isCorrect = (data.type === "multi") ? (val === normalize(data.answers[idx])) : data.answers.map(a => normalize(a)).includes(val);
+            if (isCorrect) { 
+                input.classList.remove('wrong');
+                input.classList.add('correct'); 
+                input.readOnly = true; 
+            } else { 
+                allCorrect = false; 
+                input.classList.add('wrong'); 
+                setTimeout(() => { if(!input.readOnly) { input.value = ""; input.classList.remove('wrong'); } }, 1000); 
+            }
+        });
+
+        if (allCorrect) {
+            currentScore += hintUsedOnCurrentPage ? 5 : 10;
+            if (pageId === 14) endTime = new Date();
+            setTimeout(() => nextPage(pageId + 1), 1500);
+        }
+    }
+
+    function toggleAsset(src, isHint, pageId) {
+        const wrapper = document.getElementById('modal-wrapper');
+        const modalImg = document.getElementById('overlay-asset');
+        
+        if (wrapper.style.display === 'block' && modalImg.getAttribute('src') === src) {
+            closeAsset();
+            return;
+        }
+
+        modalImg.src = src;
+        const data = gameData.find(d => d.id === pageId);
+
+        if (isHint) {
+            wrapper.classList.remove('backdrop-active');
+            if (data && data.hintStyle) {
+                modalImg.style.top = data.hintStyle.t;
+                modalImg.style.left = data.hintStyle.l;
+                modalImg.style.width = data.hintStyle.w;
+            }
+            hintUsedOnCurrentPage = true;
+        } else {
+            // Pour la carte : on centre dans le container
+            wrapper.classList.add('backdrop-active');
+            modalImg.style.top = "50%"; modalImg.style.left = "50%"; modalImg.style.width = "90%";
+        }
+        wrapper.style.display = 'block';
+    }
+
+    function handleWrapperClick() {
+        const wrapper = document.getElementById('modal-wrapper');
+        if (wrapper.classList.contains('backdrop-active')) closeAsset();
+    }
+
+    function closeAsset() {
+        const wrapper = document.getElementById('modal-wrapper');
+        wrapper.style.display = 'none';
+        wrapper.classList.remove('backdrop-active');
+    }
+
+    function nextPage(id) {
+        closeAsset();
+        hintUsedOnCurrentPage = false;
+        const active = document.querySelector('.page.active');
+        if(active) active.classList.remove('active');
+        const next = document.getElementById(`page-${id}`);
+        if (next) {
+            next.classList.add('active');
+            if (id === 15) displayFinalScore();
+        }
+    }
+
+    function displayFinalScore() {
+        const scoreDiv = document.getElementById('score-display');
+        const timeDiff = endTime - startTime;
+        const totalSeconds = Math.floor(timeDiff / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+
+        let timePoints = 100 - minutes;
+        if (timePoints < 0) timePoints = 0;
+        const totalFinal = currentScore + timePoints;
+
+        scoreDiv.innerHTML = `
+            <div style="font-size: 0.8em; opacity: 0.7;">RÉSULTATS</div>
+            <div style="margin: 10px 0;">Score : ${currentScore} pts</div>
+            <div style="margin: 10px 0;">Temps : ${timePoints} pts</div>
+            <div style="font-size: 1.5em; border-top: 1px solid #cc0000; padding-top: 10px; margin-top: 10px;">
+                TOTAL : ${totalFinal}
+            </div>
+            <div style="font-size: 0.6em; margin-top: 15px; font-weight: normal;">
+                Durée : ${minutes}min ${seconds}s
+            </div>
+        `;
+
+        setTimeout(() => {
+            scoreDiv.style.display = 'block';
+            setTimeout(() => { scoreDiv.style.opacity = '1'; }, 50);
+        }, 3500);
+    }
+
+    initGame();
+</script>
+</body>
+</html>
