@@ -2,25 +2,30 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <!-- Viewport amélioré : empêche le zoom et gère les encoches (notches) des téléphones modernes -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Escape Game LRSY</title>
     <style>
-        /* Fond noir pour masquer les bandes perdues sur les écrans hors-ratio */
+        /* Bloque le défilement et fixe la vue sur mobile */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             font-family: sans-serif; background-color: #000;
             display: flex; justify-content: center; align-items: center;
             overflow: hidden;
+            position: fixed; /* Empêche le rebond élastique sur iOS */
         }
 
-        /* LE CADRE DE RÉFÉRENCE ABSOLU (9:16) */
+        /* LE CADRE DE RÉFÉRENCE (9:16) - Ajusté pour ne jamais déborder */
         #game-container {
             position: relative;
             aspect-ratio: 9 / 16;
-            height: 100vh;
+            height: 100%; /* Priorité au remplissage de la hauteur disponible */
+            max-height: 100vh;
+            width: auto; /* La largeur s'ajuste selon le ratio */
             max-width: 100vw;
             background-color: #000;
             overflow: hidden;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
         }
 
         .page { 
@@ -56,6 +61,7 @@
             position: absolute; pointer-events: auto; border: none;
             background: transparent; color: #000; font-weight: bold;
             text-align: center; outline: none; z-index: 1001;
+            -webkit-appearance: none; /* Retire les styles par défaut Safari */
         }
         
         /* Polices adaptatives basées sur la hauteur du conteneur (vh) */
@@ -66,10 +72,10 @@
         .correct { color: #27ae60 !important; }
         .wrong { color: #cc0000 !important; }
 
-        /* SYSTÈME DE MODALE (Bridé à l'intérieur du container) */
+        /* SYSTÈME DE MODALE */
         #modal-wrapper {
             display: none; 
-            position: absolute; /* Fixé au container et non à l'écran */
+            position: absolute; 
             top: 0; left: 0;
             width: 100%; height: 100%;
             z-index: 2000;
@@ -94,8 +100,8 @@
         #score-display {
             position: absolute; top: 50%; left: 50%; 
             transform: translate(-50%, -50%); 
-            font-size: 2.5vh; color: #cc0000; font-weight: bold;
-            text-align: center; width: 80%;
+            font-size: 2.2vh; color: #cc0000; font-weight: bold;
+            text-align: center; width: 75%;
             background: rgba(255, 255, 255, 0.95);
             padding: 3vh; border-radius: 15px;
             display: none;
@@ -108,9 +114,6 @@
 <body>
 
 <div id="game-container">
-    <!-- Le contenu dynamique sera injecté ici -->
-    
-    <!-- Modale placée à l'intérieur pour un calibrage parfait -->
     <div id="modal-wrapper" onclick="handleWrapperClick()">
         <img id="overlay-asset" class="modal-img" src="" onclick="event.stopPropagation()">
     </div>
@@ -174,7 +177,7 @@
             }
             html += `</div>`;
             div.innerHTML = html;
-            container.prepend(div); // Ajout avant la modale
+            container.prepend(div);
         });
     }
 
@@ -217,15 +220,12 @@
     function toggleAsset(src, isHint, pageId) {
         const wrapper = document.getElementById('modal-wrapper');
         const modalImg = document.getElementById('overlay-asset');
-        
         if (wrapper.style.display === 'block' && modalImg.getAttribute('src') === src) {
             closeAsset();
             return;
         }
-
         modalImg.src = src;
         const data = gameData.find(d => d.id === pageId);
-
         if (isHint) {
             wrapper.classList.remove('backdrop-active');
             if (data && data.hintStyle) {
@@ -235,7 +235,6 @@
             }
             hintUsedOnCurrentPage = true;
         } else {
-            // Pour la carte : on centre dans le container
             wrapper.classList.add('backdrop-active');
             modalImg.style.top = "50%"; modalImg.style.left = "50%"; modalImg.style.width = "90%";
         }
@@ -271,7 +270,6 @@
         const totalSeconds = Math.floor(timeDiff / 1000);
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;
-
         let timePoints = 100 - minutes;
         if (timePoints < 0) timePoints = 0;
         const totalFinal = currentScore + timePoints;
@@ -287,7 +285,6 @@
                 Durée : ${minutes}min ${seconds}s
             </div>
         `;
-
         setTimeout(() => {
             scoreDiv.style.display = 'block';
             setTimeout(() => { scoreDiv.style.opacity = '1'; }, 50);
